@@ -127,6 +127,16 @@ def _enriquecer_candidato(c: dict) -> dict:
     c_dit = dict(c)
     c_dit["_habilidades"] = _normalizar_habilidades(c_dit.get("principais_habilidades"))
     c_dit["_whatsapp_url"] = _fone_para_whatsapp(c_dit.get("telefone", ""))
+    
+    # Tratamento para impedir o erro 'datetime' object is not subscriptable no HTML
+    data_raw = c_dit.get("created_at")
+    if isinstance(data_raw, datetime):
+        c_dit["created_at"] = data_raw.strftime('%Y-%m-%d %H:%M:%S')
+    elif data_raw:
+        c_dit["created_at"] = str(data_raw)
+    else:
+        c_dit["created_at"] = ""
+        
     return c_dit
 
 
