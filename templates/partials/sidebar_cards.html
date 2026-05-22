@@ -1,0 +1,60 @@
+{% if candidatos %}
+{% for c in candidatos %}
+{% set is_active = candidato_ativo_id and (c.id | string == candidato_ativo_id | string) %}
+{% set score = c.nota_compatibilidade | int if c.nota_compatibilidade else 0 %}
+<a href="/?filtro={{ filtro }}&profissao={{ profissao | urlencode }}&selecionado={{ c.id }}" class="candidate-card block rounded-card p-4 border
+              {{ 'bg-accent-light border-accent' if is_active else 'border-transparent hover:bg-accent-light' }}"
+  style="{{ 'border-left: 3px solid #B85C72;' if is_active else '' }}">
+  <div class="flex items-start justify-between gap-2">
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-bold text-ink truncate">{{ c.nome_candidato or 'Sem nome' }}</p>
+      <p class="text-xs text-muted mt-0.5 truncate">
+        {{ c.sexo or '' }}{% if c.idade %} · {{ c.idade }} anos{% endif %}
+      </p>
+      {% if c.cargo_alvo %}
+      <p class="text-[10px] text-accent font-semibold mt-0.5 truncate">{{ c.cargo_alvo }}</p>
+      {% endif %}
+    </div>
+
+    {# Badges de Estado #}
+    {% if c.aprovado %}
+    <span class="inline-flex items-center gap-1 bg-success-light text-success
+                       text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap">
+      ✓ {{ score }}%
+    </span>
+    {% else %}
+    <span class="inline-flex items-center gap-1 bg-amber-50 text-amber-600 border border-amber-200
+                       text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap">
+      ⏳ {{ score }}%
+    </span>
+    {% endif %}
+  </div>
+
+  {% if c._habilidades %}
+  <div class="flex flex-wrap gap-1 mt-2">
+    {% for h in c._habilidades[:3] %}
+    <span class="text-[9px] font-semibold px-1.5 py-0.5 bg-accent-light text-accent-dark rounded-full">{{ h }}</span>
+    {% endfor %}
+    {% if c._habilidades | length > 3 %}
+    <span class="text-[9px] font-semibold px-1.5 py-0.5 bg-page text-muted rounded-full border border-border">
+      +{{ c._habilidades | length - 3 }}
+    </span>
+    {% endif %}
+  </div>
+  {% elif c.resumo_professional %}
+  <p class="text-[11px] text-muted mt-2 line-clamp-2 leading-relaxed">
+    {{ c.resumo_professional | truncate(90) }}
+  </p>
+  {% endif %}
+</a>
+{% endfor %}
+
+{% else %}
+<div class="flex flex-col items-center justify-center h-full py-16 text-center gap-3">
+  <div class="w-14 h-14 rounded-full bg-accent-light flex items-center justify-center text-2xl">📭</div>
+  <p class="text-sm font-bold text-ink">Nenhum candidato</p>
+  <p class="text-xs text-muted max-w-[200px]">
+    Não há currículos para esta categoria no momento.
+  </p>
+</div>
+{% endif %}

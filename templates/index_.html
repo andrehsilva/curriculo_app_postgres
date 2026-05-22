@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Triagem de Currículos (IA) — Pique Aprende</title>
+  <meta name="description" content="Sistema inteligente de triagem de currículos da Escola Pique Aprende." />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { jakarta: ['"Plus Jakarta Sans"', 'sans-serif'] },
+          colors: {
+            accent: { DEFAULT: '#B85C72', light: '#F7EDF0', mid: '#D4849A', dark: '#8F3F55' },
+            success: { DEFAULT: '#1A7A48', light: '#E8F8EF' },
+            warning: { DEFAULT: '#B45309', light: '#FEF3C7' },
+            page: '#F4F2EF',
+            card: '#FFFFFF',
+            border: '#EBEBEB',
+            ink: '#1A1A1A',
+            muted: '#7A7A7A',
+          },
+          borderRadius: { card: '14px' },
+        }
+      }
+    }
+  </script>
+
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+
+  <style>
+    * {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #EBEBEB;
+      border-radius: 99px;
+    }
+
+    .candidate-card {
+      transition: background .15s, border-color .15s;
+    }
+
+    .candidate-card:hover {
+      background: #F7EDF0;
+    }
+
+    /* Tags de habilidades */
+    .skill-tag {
+      transition: background .15s, color .15s, transform .1s;
+      cursor: pointer;
+    }
+
+    .skill-tag:hover {
+      background: #B85C72;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .skill-tag.active-tag {
+      background: #B85C72;
+      color: #fff;
+    }
+
+    /* Tags de filtro na sidebar */
+    .tag-filter-pill {
+      transition: all .15s;
+      cursor: pointer;
+    }
+
+    .tag-filter-pill:hover {
+      background: #F7EDF0;
+      color: #8F3F55;
+      border-color: #D4849A;
+    }
+
+    .tag-filter-pill.active {
+      background: #B85C72;
+      color: #fff;
+      border-color: #B85C72;
+    }
+
+    .filter-pill {
+      transition: all .15s;
+    }
+
+    /* Indicador de polling HTMX */
+    #sync-indicator {
+      opacity: 0;
+      transition: opacity .3s;
+    }
+
+    #sync-indicator.htmx-request {
+      opacity: 1;
+    }
+
+    /* Toast animação */
+    @keyframes slideIn {
+      from {
+        transform: translateY(16px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideOut {
+      from {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      to {
+        transform: translateY(16px);
+        opacity: 0;
+      }
+    }
+
+    .toast-enter {
+      animation: slideIn .3s ease forwards;
+    }
+
+    .toast-leave {
+      animation: slideOut .3s ease forwards;
+    }
+
+    /* Badge de classificação */
+    .badge-elite {
+      background: #FEF9C3;
+      color: #713F12;
+    }
+
+    .badge-aprovado {
+      background: #E8F8EF;
+      color: #1A7A48;
+    }
+
+    .badge-atencao {
+      background: #FEF3C7;
+      color: #B45309;
+    }
+
+    .badge-reprovado {
+      background: #FEE2E2;
+      color: #991B1B;
+    }
+
+    /* Info row */
+    .info-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .info-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #7A7A7A;
+      min-width: 90px;
+      padding-top: 1px;
+    }
+
+    .info-value {
+      font-size: 13px;
+      color: #1A1A1A;
+      font-weight: 500;
+    }
+
+    /* Seção expansível */
+    .section-card {
+      transition: box-shadow .2s;
+    }
+
+    .section-card:hover {
+      box-shadow: 0 2px 12px rgba(184, 92, 114, .08);
+    }
+  </style>
+</head>
+
+<body class="bg-page text-ink antialiased">
+
+  <!-- Toast de novo candidato -->
+  <div id="toast-novo" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden
+            bg-ink text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg
+            flex items-center gap-2 whitespace-nowrap">
+    <span class="w-2 h-2 rounded-full bg-success inline-block animate-pulse"></span>
+    <span id="toast-msg">Novo currículo recebido!</span>
+  </div>
+
+  <!-- Layout principal -->
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- ╔══════════════════════════════════╗
+       ║  COLUNA ESQUERDA  (sidebar)     ║
+       ╚══════════════════════════════════╝ -->
+    <aside class="w-1/3 bg-card border-r border-border flex flex-col" style="min-width:300px;max-width:420px;">
+
+      <!-- Cabeçalho -->
+      <div class="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
+        <div class="flex items-center justify-between mb-1">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🎒</span>
+            <span class="text-xs font-semibold text-muted tracking-widest uppercase">Pique Aprende</span>
+          </div>
+          <!-- Indicador de sync em tempo real -->
+          <div id="sync-indicator" class="flex items-center gap-1.5 htmx-indicator">
+            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+            <span class="text-[10px] text-muted font-semibold">Atualizando…</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between mt-2">
+          <h1 class="text-xl font-extrabold text-ink leading-tight">Triagem de Currículos</h1>
+          <a href="/exportar?filtro={{ filtro }}&profissao={{ profissao | urlencode }}"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 hover:bg-green-100 text-success text-xs font-bold rounded-[10px] border border-green-200 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Exportar
+          </a>
+        </div>
+        <p class="text-xs text-muted mt-0.5 flex items-center gap-1.5">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent"></span>
+          Análise por Inteligência Artificial · atualiza a cada 15s. 
+          A captura de currículos é feita automaticamente através do whatsapp do colégio e também é possível inserir manualmente através do botão abaixo.
+        </p>
+        <a href="/logout" class="text-[10px] text-red-400 font-bold hover:underline">Sair do Sistema 🚪</a>
+      </div>
+
+      <div class="px-5 py-4 border-b border-border flex-shrink-0 space-y-3">
+        <a href="https://colegio-n8n-webhook.ggcamr.easypanel.host/form/1e062180-b8cc-4252-9291-c995b6acc6fb" 
+        target="_blank" rel="noopener noreferrer"
+        class="w-full py-2 px-4 bg-accent-light hover:bg-accent hover:text-white text-accent text-xs font-bold rounded-[10px] border border-accent/20 transition-all flex items-center justify-center gap-2 shadow-sm group">
+       <svg class="w-4 h-4 text-accent group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+       </svg>
+       Inserir Currículo Manual
+     </a>
+        <div class="flex items-center gap-1 bg-page rounded-card p-1 border border-border">
+
+          
+          {% set base = '/?profissao=' + (profissao | urlencode) %}
+          {% if candidato_ativo %}{% set base = base + '&selecionado=' + (candidato_ativo.id | string) %}{% endif %}
+          <a href="{{ base }}&filtro=reprovados" class="filter-pill flex-1 text-xs font-bold py-1.5 px-3 rounded-[10px] text-center
+                  {{ 'bg-accent text-white' if filtro == 'reprovados' else 'text-muted hover:text-ink' }}">
+            Em Análise
+          </a>
+          <a href="{{ base }}&filtro=aprovados" class="filter-pill flex-1 text-xs font-bold py-1.5 px-3 rounded-[10px] text-center
+                  {{ 'bg-accent text-white' if filtro == 'aprovados' else 'text-muted hover:text-ink' }}">
+            Aprovados
+          </a>
+          <a href="{{ base }}&filtro=todos" class="filter-pill flex-1 text-xs font-bold py-1.5 px-3 rounded-[10px] text-center
+                  {{ 'bg-accent text-white' if filtro == 'todos' else 'text-muted hover:text-ink' }}">
+            Todos
+          </a>
+          
+          
+        </div>
+
+       
+
+        <!-- Filtro por profissão -->
+        <div class="relative">
+          <form method="GET" action="/" id="form-profissao">
+            <input type="hidden" name="filtro" value="{{ filtro }}" />
+            {% if candidato_ativo %}
+            <input type="hidden" name="selecionado" value="{{ candidato_ativo.id }}" />
+            {% endif %}
+            <label class="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
+              Filtrar por Profissão
+            </label>
+            <div class="relative">
+              <select name="profissao" onchange="this.form.submit()" class="w-full appearance-none text-xs font-semibold text-ink bg-page border border-border
+                           rounded-[10px] px-3 pr-8 py-2 focus:outline-none focus:border-accent cursor-pointer">
+                <option value="" {% if not profissao %}selected{% endif %}>Todas as profissões</option>
+                {% for p in profissoes %}
+                <option value="{{ p }}" {% if profissao==p %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+              </select>
+              <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted text-xs">▾</span>
+            </div>
+          </form>
+          {% if profissao %}
+          <a href="/?filtro={{ filtro }}"
+            class="absolute top-0 right-0 text-[10px] text-accent font-bold hover:underline">
+            Limpar
+          </a>
+          {% endif %}
+        </div>
+
+        <!-- Contador -->
+        <p class="text-[11px] text-muted" id="contador">
+          <span class="font-bold text-ink" id="qtd">{{ candidatos | length }}</span>
+          candidato{{ 's' if candidatos | length != 1 }} encontrado{{ 's' if candidatos | length != 1 }}
+        </p>
+      </div>
+
+      <!-- ★ Lista de candidatos — HTMX polling a cada 15s ★ -->
+      <div id="candidate-list" class="flex-1 overflow-y-auto px-3 py-3 space-y-1"
+        hx-get="/partial/sidebar?filtro={{ filtro }}&profissao={{ profissao | urlencode }}{% if candidato_ativo %}&selecionado={{ candidato_ativo.id }}{% endif %}"
+        hx-trigger="every 15s" hx-swap="innerHTML" hx-indicator="#sync-indicator"
+        hx-on::after-request="checkNewCandidates(this)">
+
+        {% include "partials/sidebar_cards.html" %}
+
+      </div>
+
+    </aside>
+
+    <!-- ╔══════════════════════════════════╗
+       ║  COLUNA DIREITA  (detalhes)     ║
+       ╚══════════════════════════════════╝ -->
+    <main class="flex-1 overflow-y-auto bg-page">
+
+      {% if candidato_ativo %}
+      {% set ca = candidato_ativo %}
+      {% set score = ca.nota_compatibilidade | int if ca.nota_compatibilidade else 0 %}
+
+      <div class="p-8 px-12 space-y-5 max-w-none mx-auto">
+
+        <!-- ── Cabeçalho do candidato ── -->
+        <div class="section-card bg-card rounded-card border border-border p-6">
+          <div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+            <div class="min-w-0 flex-1">
+              <span class="text-[10px] font-bold text-muted uppercase tracking-widest">Candidato Selecionado</span>
+              <h2 class="text-2xl font-extrabold text-ink mt-1 leading-tight">
+                {{ ca.nome_candidato or 'Nome não informado' }}
+              </h2>
+
+              <!-- Dados pessoais básicos -->
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+                {% if ca.sexo %}
+                <span class="text-xs text-muted">{{ ca.sexo }}</span>
+                {% endif %}
+                {% if ca.idade %}
+                <span class="text-xs text-muted">· {{ ca.idade }} anos</span>
+                {% endif %}
+                {% if ca.endereco %}
+                <span class="text-xs text-muted flex items-center gap-1">
+                  <svg class="w-3 h-3 text-accent flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
+                    <circle cx="12" cy="11" r="3" />
+                  </svg>
+                  {{ ca.endereco }}
+                </span>
+                {% endif %}
+              </div>
+
+              <!-- Contatos -->
+              <div class="flex flex-wrap gap-4 mt-3">
+                {% if ca.email %}
+                <span class="flex items-center gap-1.5 text-sm text-muted">
+                  <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <a href="mailto:{{ ca.email }}" class="hover:text-accent hover:underline">{{ ca.email }}</a>
+                </span>
+                {% endif %}
+                {% if ca.telefone %}
+                <span class="flex items-center gap-1.5 text-sm text-muted">
+                  <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  <a href="{{ ca._whatsapp_url }}" target="_blank"
+                    class="hover:text-accent hover:underline flex items-center gap-1">
+                    {{ ca.telefone }}
+                    <span class="text-emerald-500 text-xs">💬</span>
+                  </a>
+                </span>
+                {% endif %}
+                {% if ca.url_arquivo_original %}
+                <a href="{{ ca.url_arquivo_original }}" target="_blank" rel="noopener"
+                  class="flex items-center gap-1.5 text-sm text-accent font-semibold hover:underline">
+                  <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Ver currículo original
+                </a>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Nota de compatibilidade -->
+            <div class="bg-accent-light rounded-card px-6 py-5 text-center flex-shrink-0 min-w-[130px]">
+              <p class="text-[10px] font-extrabold text-accent-dark uppercase tracking-widest mb-1">Compatibilidade</p>
+              <p class="text-5xl font-extrabold text-accent leading-none">{{ score }}%</p>
+
+              {% if ca.aprovado %}
+              <p class="text-xs font-bold text-success mt-2 flex items-center justify-center gap-1">
+                <span>✓</span> Aprovado
+              </p>
+              {% else %}
+              <p class="text-xs font-bold text-amber-600 mt-2 flex items-center justify-center gap-1">
+                <span>⏳</span> Em Análise
+              </p>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Cargo e classificação -->
+          {% if ca.cargo_alvo or ca.classificacao %}
+          <div class="mt-5 pt-4 border-t border-border flex flex-wrap gap-3 items-center">
+            {% if ca.cargo_alvo %}
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold text-muted uppercase tracking-wider">Cargo Alvo</span>
+              <span class="text-xs font-bold text-ink bg-page px-2.5 py-1 rounded-full border border-border">{{
+                ca.cargo_alvo }}</span>
+            </div>
+            {% endif %}
+            {% if ca.classificacao %}
+            {% set cls_lower = ca.classificacao | lower %}
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold text-muted uppercase tracking-wider">Classificação</span>
+              <span class="text-xs font-bold px-2.5 py-1 rounded-full
+              {% if 'elite' in cls_lower %}badge-elite
+              {% elif 'imediata' in cls_lower %}badge-elite
+              {% elif 'aprovado' in cls_lower or 'recomend' in cls_lower %}badge-aprovado
+              {% elif 'atenção' in cls_lower or 'atencao' in cls_lower or 'reserva' in cls_lower %}badge-atencao
+              {% else %}badge-reprovado{% endif %}">
+                {{ ca.classificacao }}
+              </span>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- ── Resumo IA ── -->
+        {% if ca.resumo_profissional %}
+        <div class="section-card bg-card rounded-card border border-border p-6">
+          <h3 class="text-sm font-bold text-ink mb-3 flex items-center gap-2">
+            <span class="w-6 h-6 rounded-md bg-accent-light flex items-center justify-center text-sm">✨</span>
+            Resumo do Perfil — Avaliação por IA
+          </h3>
+          <p class="text-sm text-muted leading-relaxed">{{ ca.resumo_profissional }}</p>
+        </div>
+        {% endif %}
+
+        <!-- ── Habilidades como Tags ── -->
+        {% if ca._habilidades %}
+        <div class="section-card bg-card rounded-card border border-border p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-ink flex items-center gap-2">
+              <span class="w-6 h-6 rounded-md bg-accent-light flex items-center justify-center text-sm">🏷️</span>
+              Habilidades Identificadas
+            </h3>
+            <span class="text-[10px] text-muted font-medium">{{ ca._habilidades | length }} habilidade{{ 's' if
+              ca._habilidades | length != 1 }}</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            {% for h in ca._habilidades %}
+            <span
+              class="skill-tag text-xs font-semibold px-3 py-1.5 rounded-full bg-accent-light text-accent-dark border border-accent/20">
+              {{ h }}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- ── Alertas de Risco ── -->
+        {% if ca.alertas_de_risco and ca.alertas_de_risco | lower not in ['nenhum', 'none', 'n/a', ''] %}
+        <div class="section-card bg-card rounded-card border border-warning p-6">
+          <h3 class="text-sm font-bold text-ink mb-3 flex items-center gap-2">
+            <span class="w-6 h-6 rounded-md bg-warning-light flex items-center justify-center text-sm">⚠️</span>
+            Alertas de Risco
+          </h3>
+          <p class="text-sm text-warning leading-relaxed font-medium">{{ ca.alertas_de_risco }}</p>
+        </div>
+        {% endif %}
+
+        <!-- ── Data de recebimento ── -->
+        {% if ca.created_at %}
+        <div class="text-center">
+          <p class="text-[11px] text-muted">
+            Currículo recebido em
+            <span class="font-semibold text-ink">
+              {{ ca.created_at[:10] }}
+            </span>
+          </p>
+        </div>
+        {% endif %}
+
+        <div class="flex gap-3 flex-wrap">
+          {% set conv_msg = "Olá " + (ca.nome_candidato or '') + "! Entramos em contato a partir do seu currículo
+          enviado para a Escola Pique Aprende para a vaga de " + (ca.cargo_alvo or 'Professor/Auxiliar') + ".
+          Gostaríamos de agendar uma entrevista. Qual o seu melhor horário?" %}
+
+          <a href="{{ ca._whatsapp_url }}?text={{ conv_msg | urlencode }}" target="_blank"
+            class="flex-1 py-3 rounded-card border-2 border-accent text-accent text-sm font-bold hover:bg-accent-light transition-colors min-w-[160px] text-center flex items-center justify-center">
+            Solicitar Entrevista
+          </a>
+
+          {% if ca.aprovado %}
+          <button id="btn-analisar" data-id="{{ ca.id }}" data-nome="{{ ca.nome_candidato | e }}"
+            class="flex-1 py-3 rounded-card bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors min-w-[160px] flex items-center justify-center gap-1.5">
+            <span>⏳</span> Mover para Em Análise
+          </button>
+          {% else %}
+          <button id="btn-aprovar" data-id="{{ ca.id }}" data-nome="{{ ca.nome_candidato | e }}"
+            class="flex-1 py-3 rounded-card bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition-colors min-w-[160px] flex items-center justify-center gap-1.5">
+            <span>✓</span> Aprovar Candidato
+          </button>
+          {% endif %}
+
+          <button id="btn-excluir" data-id="{{ ca.id }}" data-nome="{{ ca.nome_candidato | e }}"
+            class="py-3 px-5 rounded-card border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 transition-colors flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Excluir
+          </button>
+        </div>
+
+      </div>
+
+      {% else %}
+      <!-- Estado vazio -->
+      <div class="h-full flex flex-col items-center justify-center gap-4 text-center px-8">
+        <div class="w-20 h-20 rounded-full bg-accent-light flex items-center justify-center text-4xl">📂</div>
+        <div>
+          <p class="text-base font-bold text-ink">Nenhum candidato selecionado</p>
+          <p class="text-sm text-muted mt-1 max-w-xs">
+            {% if candidatos %}
+            Clique em um candidato na lista ao lado para ver os detalhes.
+            {% else %}
+            Aguardando currículos do n8n. A lista atualiza automaticamente.
+            {% endif %}
+          </p>
+        </div>
+        {% if not candidatos %}
+        <div class="flex items-center gap-2 text-xs text-muted border border-border bg-card rounded-full px-4 py-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse inline-block"></span>
+          Verificando novos currículos a cada 15s…
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+    </main>
+  </div>
+
+  <!-- ════════════════════════════════════════
+     Detecção de novos candidatos + Toast
+════════════════════════════════════════ -->
+  <script>
+    // Contagem inicial ao carregar a página
+    let _lastCount = {{ candidatos | length }};
+
+    function checkNewCandidates(el) {
+      const cards = el.querySelectorAll('.candidate-card');
+      const newCount = cards.length;
+
+      // Atualiza o contador na sidebar
+      const qtdEl = document.getElementById('qtd');
+      if (qtdEl) {
+        qtdEl.textContent = newCount;
+        const label = newCount === 1 ? 'candidato encontrado' : 'candidatos encontrados';
+        qtdEl.nextSibling.textContent = ' ' + label;
+      }
+
+      // Exibe toast se chegaram novos candidatos
+      if (newCount > _lastCount) {
+        const diff = newCount - _lastCount;
+        showToast(`${diff} novo${diff > 1 ? 's' : ''} currículo${diff > 1 ? 's' : ''} recebido${diff > 1 ? 's' : ''}!`);
+      }
+
+      _lastCount = newCount;
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast-novo');
+      const msgEl = document.getElementById('toast-msg');
+      if (!toast || !msgEl) return;
+      msgEl.textContent = msg;
+      toast.classList.remove('hidden', 'toast-leave');
+      toast.classList.add('flex', 'toast-enter');
+      setTimeout(() => {
+        toast.classList.remove('toast-enter');
+        toast.classList.add('toast-leave');
+        setTimeout(() => {
+          toast.classList.add('hidden');
+          toast.classList.remove('flex', 'toast-leave');
+        }, 300);
+      }, 4000);
+    }
+
+    // ── DELEGAÇÃO DE EVENTOS (Resolve o problema do HTMX) ──
+    // ── DELEGAÇÃO DE EVENTOS ──
+    document.addEventListener('click', function (e) {
+      // Clique no botão Aprovar
+      const btnAprovar = e.target.closest('#btn-aprovar');
+      if (btnAprovar) {
+        e.preventDefault();
+        aprovarCandidato(btnAprovar.getAttribute('data-id'), btnAprovar.getAttribute('data-nome'));
+        return;
+      }
+
+      // Clique no botão Mover para Em Análise
+      const btnAnalisar = e.target.closest('#btn-analisar');
+      if (btnAnalisar) {
+        e.preventDefault();
+        moverParaAnalise(btnAnalisar.getAttribute('data-id'), btnAnalisar.getAttribute('data-nome'));
+        return;
+      }
+
+      // Clique no botão Excluir
+      const btnExcluir = e.target.closest('#btn-excluir');
+      if (btnExcluir) {
+        e.preventDefault();
+        abrirModalExclusao(btnExcluir.getAttribute('data-id'), btnExcluir.getAttribute('data-nome'));
+        return;
+      }
+    });
+
+    // Variável global para armazenar a rota da ação confirmada
+  let urlStatusPendente = '';
+
+// Disparado ao clicar no botão "Aprovar Candidato"
+function aprovarCandidato(id, nome) {
+  urlStatusPendente = '/api/contratar/' + id;
+  
+  // Customização visual para o modo Aprovar (Verde)
+  document.getElementById('modal-status-icone').textContent = '✓';
+  
+  const tituloEl = document.getElementById('modal-status-titulo');
+  tituloEl.textContent = 'Aprovar Candidato';
+  tituloEl.className = 'text-lg font-bold text-emerald-600'; 
+  
+  document.getElementById('modal-status-nome-candidato').textContent = nome;
+  document.getElementById('modal-status-mensagem').textContent = 'Deseja confirmar a aprovação deste perfil? Ele será movido para a lista de aprovados.';
+  
+  const btnConfirmar = document.getElementById('modal-status-btn-confirmar');
+  btnConfirmar.textContent = 'Confirmar Aprovação';
+  btnConfirmar.className = 'flex-1 py-2.5 rounded-card bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition-colors';
+  
+  abrirModalStatus();
+}
+
+// Disparado ao clicar no botão "Mover para Em Análise"
+function moverParaAnalise(id, nome) {
+  urlStatusPendente = '/api/analisar/' + id;
+  
+  // Customização visual para o modo Em Análise (Amarelo/Âmbar)
+  document.getElementById('modal-status-icone').textContent = '⏳';
+  
+  const tituloEl = document.getElementById('modal-status-titulo');
+  tituloEl.textContent = 'Mover para Em Análise';
+  tituloEl.className = 'text-lg font-bold text-amber-500'; 
+  
+  document.getElementById('modal-status-nome-candidato').textContent = nome;
+  document.getElementById('modal-status-mensagem').textContent = 'Deseja retornar o status deste perfil para "Em Análise" na listagem geral?';
+  
+  const btnConfirmar = document.getElementById('modal-status-btn-confirmar');
+  btnConfirmar.textContent = 'Mover para Análise';
+  btnConfirmar.className = 'flex-1 py-2.5 rounded-card bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors';
+  
+  abrirModalStatus();
+}
+
+// Controla a exibição removendo a classe hidden (Igual ao modal de exclusão)
+function abrirModalStatus() {
+  const modal = document.getElementById('modal-status');
+  if (modal) {
+    modal.classList.remove('hidden');
+  }
+}
+
+function fecharModalStatus() {
+  const modal = document.getElementById('modal-status');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+  urlStatusPendente = '';
+}
+
+// Executa a requisição real após a confirmação no modal
+function confirmarAlteracaoStatus() {
+  if (!urlStatusPendente) return;
+  
+  fecharModalStatus();
+  executarAcao(urlStatusPendente);
+}
+
+    function executarAcao(url) {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(res => res.json())
+        .then(data => {
+          if (data.ok) {
+            showToast(data.message);
+            setTimeout(() => {
+              const filtro = document.getElementById('filtro-atual') ? document.getElementById('filtro-atual').value : 'todos';
+              const profissao = document.getElementById('profissao-atual') ? document.getElementById('profissao-atual').value : '';
+              window.location.href = '/?filtro=' + filtro + '&profissao=' + encodeURIComponent(profissao);
+            }, 1000);
+          } else {
+            alert('Erro: ' + data.message);
+          }
+        }).catch(err => console.error(err));
+    }
+
+
+    // Lógica para Exclusão com Senha
+    var candidatoIdParaExcluir = null;
+
+    function abrirModalExclusao(id, nome) {
+      candidatoIdParaExcluir = id;
+      document.getElementById('modal-nome-candidato').textContent = nome;
+      document.getElementById('input-senha').value = '';
+      document.getElementById('msg-erro-senha').classList.add('hidden');
+
+      const modal = document.getElementById('modal-exclusao');
+      modal.classList.remove('hidden');
+      setTimeout(() => document.getElementById('input-senha').focus(), 100);
+    }
+
+    function fecharModalExclusao() {
+      document.getElementById('modal-exclusao').classList.add('hidden');
+      candidatoIdParaExcluir = null;
+    }
+
+    function confirmarExclusao() {
+      if (!candidatoIdParaExcluir) return;
+      var senha = document.getElementById('input-senha').value;
+
+      fetch('/api/excluir/' + candidatoIdParaExcluir, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ senha: senha })
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data.ok) {
+            showToast(data.message);
+            fecharModalExclusao();
+            setTimeout(function () {
+              var filtro = document.getElementById('filtro-atual') ? document.getElementById('filtro-atual').value : 'todos';
+              var profissao = document.getElementById('profissao-atual') ? document.getElementById('profissao-atual').value : '';
+              window.location.href = '/?filtro=' + filtro + '&profissao=' + encodeURIComponent(profissao);
+            }, 1000);
+          } else {
+            document.getElementById('msg-erro-senha').classList.remove('hidden');
+          }
+        })
+        .catch(function (err) {
+          console.error(err);
+          alert('Ocorreu um erro ao processar a requisição.');
+        });
+    }
+
+    // Atalho Enter na senha
+    document.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter' && document.activeElement.id === 'input-senha') {
+        confirmarExclusao();
+      }
+    });
+  </script>
+
+<div id="modal-status" 
+class="fixed inset-0 z-50 hidden flex items-center justify-center bg-ink/50 backdrop-blur-sm transition-opacity duration-300">
+<div class="bg-card w-full max-w-md p-6 rounded-card border border-border shadow-2xl transform transition-transform duration-300 scale-95">
+
+<div class="flex items-center gap-3 mb-4">
+ <span id="modal-status-icone" class="text-2xl"></span>
+ <h3 id="modal-status-titulo" class="text-lg font-bold"></h3>
+</div>
+
+<p class="text-sm text-muted mb-6 leading-relaxed">
+ Você está prestes a alterar o status de <strong id="modal-status-nome-candidato" class="text-ink"></strong>.
+ <span id="modal-status-mensagem"></span>
+</p>
+
+<div class="flex gap-3">
+ <button onclick="fecharModalStatus()"
+         class="flex-1 py-2.5 rounded-card border border-border text-muted text-sm font-bold hover:bg-page transition-colors">
+   Cancelar
+ </button>
+ <button id="modal-status-btn-confirmar" onclick="confirmarAlteracaoStatus()"
+         class="flex-1 py-2.5 rounded-card text-white text-sm font-bold transition-colors">
+   Confirmar
+ </button>
+</div>
+</div>
+</div>
+
+<div id="modal-exclusao"
+class="fixed inset-0 z-50 hidden flex items-center justify-center bg-ink/50 backdrop-blur-sm transition-opacity duration-300">
+  <!-- Modal de Confirmação de Exclusão (Senha Fixa) -->
+  <div id="modal-exclusao"
+    class="fixed inset-0 z-50 hidden flex items-center justify-center bg-ink/50 backdrop-blur-sm transition-opacity duration-300">
+    <div
+      class="bg-card w-full max-w-md p-6 rounded-card border border-border shadow-2xl transform transition-transform duration-300 scale-95">
+      <div class="flex items-center gap-3 mb-4 text-red-500">
+        <span class="text-2xl">⚠️</span>
+        <h3 class="text-lg font-bold text-ink">Confirmar Exclusão</h3>
+      </div>
+      <p class="text-sm text-muted mb-4 leading-relaxed">
+        Você está prestes a excluir permanentemente o registro de <strong id="modal-nome-candidato"
+          class="text-ink"></strong>.
+        Esta ação não pode ser desfeita. Por favor, insira a senha para confirmar:
+      </p>
+      <div class="mb-4">
+        <input type="password" id="input-senha" placeholder="Digite a senha..."
+          class="w-full text-sm bg-page border border-border rounded-[10px] px-3.5 py-2.5 focus:outline-none focus:border-red-500" />
+        <p id="msg-erro-senha" class="text-xs text-red-500 mt-1.5 hidden font-semibold">Senha incorreta. Tente
+          novamente.</p>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="fecharModalExclusao()"
+          class="flex-1 py-2.5 rounded-card border border-border text-muted text-sm font-bold hover:bg-page transition-colors">
+          Cancelar
+        </button>
+        <button onclick="confirmarExclusao()"
+          class="flex-1 py-2.5 rounded-card bg-red-500 hover:bg-red-600 text-white text-sm font-bold transition-colors">
+          Confirmar Exclusão
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Parâmetros de filtro atuais -->
+  <input type="hidden" id="filtro-atual" value="{{ filtro }}" />
+  <input type="hidden" id="profissao-atual" value="{{ profissao }}" />
+
+</body>
+
+</html>
