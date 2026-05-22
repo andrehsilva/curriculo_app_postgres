@@ -1,1 +1,70 @@
-/venv
+# Ambiente Virtual
+# (Evita subir pacotes pesados como pip, poetry ou venv)
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Cache do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Dependências
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Arquivos de Teste e Cobertura
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+cover/
+htmlcov/
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+*.lcov
+.cache
+
+# Configurações do Flask e Banco de Dados Local
+instance/
+.webassets-cache
+.flask_debug.log
+*.sqlite
+*.sqlite3
+
+# Arquivos de Ambiente (Nunca compartilhe suas senhas/chaves!)
+.env
+.env.local
+.env.*.local
+.env.secret
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
